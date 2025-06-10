@@ -6,7 +6,7 @@ import reactor.core.publisher.Mono;
 import java.util.List;
 
 public class XlsxApi {
-    private static final String baseUrl="http://hhsc.kangnasi.xyz:9660";
+    private static final String baseUrl="http://hhsc.kangnasi.xyz";
     public static String getQRCodeUrl(List<String> list,String codeId){
         WebClient webClient = WebClient.create(baseUrl);
         Mono<String> response = webClient.post()
