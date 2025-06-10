@@ -4,206 +4,187 @@ import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.application.Application;
 import javafx.application.Platform;
+import javafx.geometry.Rectangle2D;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
-import javafx.scene.control.Label;
 import javafx.scene.image.Image;
 import javafx.scene.layout.BorderPane;
-import javafx.scene.paint.Color;
 import javafx.scene.web.WebEngine;
+import javafx.scene.web.WebView;
+import javafx.stage.Screen;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
 import javafx.util.Duration;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationListener;
-import javafx.scene.web.WebView;
 
 import java.io.IOException;
 import java.net.URL;
 import java.util.Optional;
 
 public class JavaFXApplication2 extends Application {
+
+    /* ---------- 设计稿尺寸 ---------- */
+    private static final double DESIGN_W = 1400;
+    private static final double DESIGN_H = 830;
+
     private Stage splashStage;
 
+    /* ---------- 计算缩放因子 ---------- */
+    private double calcScale() {
+        Rectangle2D vb = Screen.getPrimary().getVisualBounds(); // 去掉任务栏
+        double sx = vb.getWidth()  / DESIGN_W;
+        double sy = vb.getHeight() / DESIGN_H;
+        return Math.min(sx, sy);                                // 等比缩放
+    }
+
     @Override
-    public void start(Stage primaryStage) throws IOException {
-        // 创建并显示启动窗口
+    public void start(Stage primaryStage) {
+        /* 启动画面 */
         createSplashStage();
         splashStage.show();
 
-        // 在后台线程启动Spring Boot
+        /* 后台启动 Spring Boot */
         new Thread(() -> {
             try {
                 SpringApplication app = new SpringApplication(WebviewDemoApplication.class);
-                // 添加监听器，当Spring Boot启动完成后执行
-                app.addListeners((ApplicationListener<ApplicationReadyEvent>) event -> {
-                    // 在JavaFX线程中关闭启动窗口并显示主窗口
-                    Platform.runLater(() -> {
-                        splashStage.close();
-                        try {
-                            configureMainStage(primaryStage);
+                app.addListeners((ApplicationListener<ApplicationReadyEvent>) event ->
+                        Platform.runLater(() -> {
+                            splashStage.close();
+                            try {
+                                configureMainStage(primaryStage);
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
                             primaryStage.show();
-                        } catch (IOException e) {
-                            throw new RuntimeException(e);
-                        }
-//                        Timeline timeline = new Timeline(
-//                                new KeyFrame(Duration.seconds(3), e -> {
-//                                    splashStage.close();
-//                                    // 配置主窗口但不立即显示
-//                                    try {
-//                                        configureMainStage(primaryStage);
-//                                    } catch (IOException ex) {
-//                                        throw new RuntimeException(ex);
-//                                    }
-//                                    primaryStage.show();
-//                                })
-//                        );
-//                        timeline.play();
-                    });
-                });
+                        }));
                 app.run(getParameters().getRaw().toArray(new String[0]));
             } catch (Exception e) {
                 e.printStackTrace();
-                // 启动失败时显示错误信息
                 Platform.runLater(() -> {
                     splashStage.close();
-                    showErrorAlert("Spring Boot启动失败: " + e.getMessage());
+                    showErrorAlert("Spring Boot 启动失败: " + e.getMessage());
                 });
             }
         }).start();
     }
-    private void createSplashStage() {
-        splashStage = new Stage();
 
-        // 创建WebView加载HTML
+    /* ---------- Splash ---------- */
+    private void createSplashStage() {
+        double scale = calcScale();
+
+        splashStage = new Stage();
+        splashStage.initStyle(StageStyle.UNDECORATED);
+        splashStage.setAlwaysOnTop(true);
+
         WebView webView = new WebView();
         WebEngine engine = webView.getEngine();
-
         try {
             URL htmlUrl = getClass().getResource("/static/start.html");
-            if (htmlUrl != null) {
-                engine.load(htmlUrl.toExternalForm());
-            } else {
-                throw new IOException("Cannot find splash screen HTML");
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-            webView.getEngine().loadContent("<h1 style='color:red;text-align:center'>启动界面加载失败</h1>");
+            engine.load(htmlUrl != null ? htmlUrl.toExternalForm()
+                    : "<h1 style='color:red;text-align:center'>启动界面加载失败</h1>");
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            engine.loadContent("<h1 style='color:red;text-align:center'>启动界面加载失败</h1>");
         }
 
-        // 配置窗口属性
-        Scene splashScene = new Scene(webView, 400, 300);
-        splashStage.setScene(splashScene);
-        splashStage.setTitle("系统启动中");
-        splashStage.initStyle(StageStyle.UNDECORATED);
-        splashStage.setResizable(false);
+        webView.setPrefWidth(400 * scale);
+        webView.setPrefHeight(300 * scale);
 
-        // 关键配置：窗口行为控制
-        splashStage.setAlwaysOnTop(true); // 始终保持最前
-        splashStage.setIconified(false);  // 初始非最小化状态
+        Scene scene = new Scene(webView);
+        scene.getRoot().setScaleX(scale);
+        scene.getRoot().setScaleY(scale);
 
-        // 禁用最小化事件
-        splashStage.iconifiedProperty().addListener((obs, oldVal, newVal) -> {
-            if (newVal) {
-                Platform.runLater(() -> splashStage.setIconified(false));
-            }
-        });
+        splashStage.setScene(scene);
+        splashStage.centerOnScreen();
 
-        // 禁用窗口失焦
-        splashStage.focusedProperty().addListener((obs, oldVal, newVal) -> {
-            if (!newVal) {
-                Platform.runLater(() -> splashStage.requestFocus());
-            }
-        });
-
-        // 设置图标
+        /* 图标 */
         try {
             URL iconUrl = getClass().getResource("/icon.jpg");
-            if (iconUrl != null) {
-                Image icon = new Image(iconUrl.openStream());
-                splashStage.getIcons().add(icon);
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
-        // 窗口位置和显示配置
-        splashStage.centerOnScreen();
-        splashStage.setOnShown(event -> {
-            splashStage.toFront();    // 确保显示在最前
-            splashStage.requestFocus(); // 保持焦点
-        });
+            if (iconUrl != null) splashStage.getIcons().add(new Image(iconUrl.openStream()));
+        } catch (IOException ignored) {}
     }
 
-    private void configureMainStage(Stage mainStage) throws IOException {
+    /* ---------- 主窗口 ---------- */
+    private void configureMainStage(Stage stage) throws IOException {
+        double scale = calcScale();
+
         WebView webView = new WebView();
         WebEngine engine = webView.getEngine();
-        URL resource = getClass().getResource("/static/index.html");
-        engine.load("http://127.0.0.1:16300/");
-        BorderPane root = new BorderPane();
-        root.setCenter(webView);
+        engine.load("http://127.0.0.1:16300/");                 // Spring Boot 地址
 
-        Scene scene = new Scene(root, 1400, 830);
-        mainStage.setTitle("二维码生成器");
-        mainStage.setScene(scene);
-        mainStage.setResizable(false);
+        BorderPane root = new BorderPane(webView);
+        root.setScaleX(scale);
+        root.setScaleY(scale);
 
-        // 设置主窗口图标
+        Scene scene = new Scene(root, DESIGN_W * scale, DESIGN_H * scale);
+
+        stage.setTitle("二维码生成器");
+        stage.setResizable(false);
+        stage.setScene(scene);
+        stage.centerOnScreen();                                 // 保持居中
+        stage.setMinWidth(DESIGN_W * 0.6);
+        stage.setMinHeight(DESIGN_H * 0.6);
+
+        /* 图标 */
         URL iconUrl = getClass().getResource("/icon.jpg");
-        if (iconUrl != null) {
-            Image icon = new Image(iconUrl.openStream());
-            mainStage.getIcons().add(icon);
-        }
+        if (iconUrl != null) stage.getIcons().add(new Image(iconUrl.openStream()));
 
-        // 处理关闭事件
-        mainStage.setOnCloseRequest(event -> {
+        /* 关闭确认 */
+        stage.setOnCloseRequest(evt -> {
             Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
             alert.setTitle("请选择");
             alert.setHeaderText("你确定要退出吗？");
 
-            // 设置对话框图标
-            Stage dialogStage = (Stage) alert.getDialogPane().getScene().getWindow();
-            URL dialogIconUrl = getClass().getResource("/icon.jpg");
-            if (dialogIconUrl != null) {
+            ButtonType yes = new ButtonType("是的", ButtonBar.ButtonData.YES);
+            ButtonType no  = new ButtonType("取消", ButtonBar.ButtonData.NO);
+            alert.getButtonTypes().setAll(yes, no);
+
+            /* 对话框图标 */
+            Stage dlg = (Stage) alert.getDialogPane().getScene().getWindow();
+            if (iconUrl != null) {
                 try {
-                    dialogStage.getIcons().add(new Image(dialogIconUrl.openStream()));
+                    dlg.getIcons().add(new Image(iconUrl.openStream()));
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 }
             }
 
-            // 自定义按钮
-            ButtonType yesButton = new ButtonType("是的", ButtonBar.ButtonData.YES);
-            ButtonType noButton = new ButtonType("取消", ButtonBar.ButtonData.NO);
-            alert.getButtonTypes().setAll(yesButton, noButton);
-
-            Optional<ButtonType> result = alert.showAndWait();
-            if (result.isPresent() && result.get() == yesButton) {
-                System.exit(0);
+            Optional<ButtonType> res = alert.showAndWait();
+            if (res.isPresent() && res.get() == yes) {
+                System.exit(0);               // ★ 点击“是的”后直接退出 JVM
             } else {
-                event.consume(); // 取消关闭操作
+                evt.consume();                // 取消关闭
             }
+        });
+
+        /* 宽高保持比例（可选） */
+        stage.widthProperty().addListener((o, ov, nv) -> {
+            double newH = nv.doubleValue() * DESIGN_H / DESIGN_W;
+            stage.setHeight(newH);
         });
     }
 
-    private void showErrorAlert(String message) {
+    /* ---------- 错误提示 ---------- */
+    private void showErrorAlert(String msg) {
         Alert alert = new Alert(Alert.AlertType.ERROR);
         alert.setTitle("错误");
         alert.setHeaderText("启动失败");
-        alert.setContentText(message);
-        // 设置错误对话框图标
-        Stage dialogStage = (Stage) alert.getDialogPane().getScene().getWindow();
-        URL dialogIconUrl = getClass().getResource("/icon.jpg");
-        if (dialogIconUrl != null) {
-            try {
-                dialogStage.getIcons().add(new Image(dialogIconUrl.openStream()));
-            } catch (IOException e) {
-                e.printStackTrace();
+        alert.setContentText(msg);
+        try {
+            URL iconUrl = getClass().getResource("/icon.jpg");
+            if (iconUrl != null) {
+                Stage dlg = (Stage) alert.getDialogPane().getScene().getWindow();
+                dlg.getIcons().add(new Image(iconUrl.openStream()));
             }
-        }
+        } catch (IOException ignored) {}
         alert.showAndWait();
+    }
+
+    public static void main(String[] args) {
+        launch(args);
     }
 }
